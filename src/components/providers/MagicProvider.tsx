@@ -11,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ARBITRUM_CHAIN_ID, ARBITRUM_RPC_URL, MAGIC_API_KEY } from "@/lib/constants";
+import { ARBITRUM_CHAIN_ID, MAGIC_API_KEY, UA_EVM_CHAINS } from "@/lib/constants";
 
 export type Magic = MagicBase<[EVMExtension]>;
 
@@ -51,10 +51,18 @@ export function MagicProvider({ children }: { children: ReactNode }) {
     const instance = new MagicBase(MAGIC_API_KEY(), {
       // With the EVM extension the top-level `network` option is omitted —
       // the extension owns chain configuration and enables chain switching.
+      //
+      // Every UA chain is registered, not just Arbitrum: 7702 delegation has to
+      // happen on whichever chain the payer's funds sit on, and switchChain only
+      // accepts chains declared here.
       extensions: [
-        new EVMExtension([
-          { rpcUrl: ARBITRUM_RPC_URL, chainId: ARBITRUM_CHAIN_ID, default: true },
-        ]),
+        new EVMExtension(
+          UA_EVM_CHAINS.map((chain) => ({
+            rpcUrl: chain.rpcUrl,
+            chainId: chain.chainId,
+            default: chain.chainId === ARBITRUM_CHAIN_ID,
+          })),
+        ),
       ],
     }) as Magic;
 

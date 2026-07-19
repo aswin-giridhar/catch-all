@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FlapBoard } from "@/components/FlapBoard";
 import { useMagic } from "@/components/providers/MagicProvider";
 import { useUniversalAccount } from "@/components/providers/UniversalAccountProvider";
@@ -10,8 +10,9 @@ type Stage = "amount" | "review" | "sending" | "done";
 
 type BuiltTransaction = {
   rootHash: string;
-  userOps?: unknown[];
-  fees?: { totals?: { feeTokenAmountInUSD?: string | number } };
+  userOps?: Array<{ expiredAt?: number }>;
+  /** Fees live on feeQuotes[].fees.totals — there is no top-level `fees` field. */
+  feeQuotes?: Array<{ fees?: { totals?: { feeTokenAmountInUSD?: string } } }>;
 };
 
 export function PayFlow({
@@ -39,6 +40,7 @@ export function PayFlow({
   const [tx, setTx] = useState<BuiltTransaction | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sending = useRef(false);
 
   const short = `${recipient.slice(0, 6)}…${recipient.slice(-4)}`;
   const payee = recipientName?.trim() || short;
@@ -75,7 +77,10 @@ export function PayFlow({
   }
 
   async function handlePay() {
-    if (!tx) return;
+    if (!tx || sending.current) return;
+    // A ref guard, not the disabled prop: `disabled` only applies after React
+    // commits, so two fast clicks can both enter this function and pay twice.
+    sending.current = true;
     setError(null);
     setStage("sending");
     try {
@@ -84,11 +89,17 @@ export function PayFlow({
       setStage("done");
     } catch (e) {
       setError(message(e));
-      setStage("review");
+      // Discard the transaction rather than offering "try again" on the same one.
+      // If it failed *after* broadcasting, re-sending would pay twice; forcing a
+      // rebuild re-quotes against current balances instead.
+      setTx(null);
+      setStage("amount");
+    } finally {
+      sending.current = false;
     }
   }
 
-  const fee = tx?.fees?.totals?.feeTokenAmountInUSD;
+  const fee = tx?.feeQuotes?.[0]?.fees?.totals?.feeTokenAmountInUSD;
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-14">
@@ -161,7 +172,15 @@ export function PayFlow({
                   inputMode="decimal"
                   value={amount}
                   readOnly={Boolean(price)}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                  onChange={(e) => {
+                    setAmount(e.target.value.replace(/[^0-9.]/g, ""));
+                    // Any edit invalidates the quote. Without this the screen can
+                    // read "Send $50" while sending a transaction built for $5.
+                    if (tx) {
+                      setTx(null);
+                      setStage("amount");
+                    }
+                  }}
                   placeholder="5.00"
                   className="w-full bg-transparent py-3 font-board text-xl outline-none placeholder:text-ink/30"
                 />
@@ -274,9 +293,15 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function message(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
-  // The SDK's balance error is accurate but reads like a stack trace.
+
+  // -32653. Genuinely ambiguous: it means an empty account, but other teams have
+  // also hit it on cross-chain routes *with* funds present, which Particle is
+  // investigating. Naming both possibilities beats asserting the wrong one.
   if (raw.includes("Insufficient primary token balance")) {
-    return "Not enough balance to cover that amount plus the network fee.";
+    return "Not enough balance for that amount plus the network fee — or the cross-chain route is temporarily unavailable. Try a smaller amount.";
+  }
+  if (raw.includes("System maintenance")) {
+    return "Particle's routing is under maintenance right now. Try again shortly.";
   }
   return raw;
 }

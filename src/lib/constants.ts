@@ -6,9 +6,34 @@
  */
 
 export const ARBITRUM_CHAIN_ID = 42161;
+export const SOLANA_CHAIN_ID = 101;
 
 export const ARBITRUM_RPC_URL =
   process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL ?? "https://arb1.arbitrum.io/rpc";
+
+/**
+ * Every EVM chain Universal Accounts supports.
+ *
+ * All of them must be registered with Magic at init, because EIP-7702 delegation is
+ * required on the chain the funds come FROM — not the chain they land on — and
+ * `magic.evm.switchChain` only accepts chains it already knows about.
+ */
+export const UA_EVM_CHAINS = [
+  { chainId: 1, rpcUrl: "https://ethereum-rpc.publicnode.com" },
+  { chainId: 56, rpcUrl: "https://bsc-dataseed.binance.org" },
+  { chainId: 196, rpcUrl: "https://rpc.xlayer.tech" },
+  { chainId: 8453, rpcUrl: "https://mainnet.base.org" },
+  { chainId: ARBITRUM_CHAIN_ID, rpcUrl: ARBITRUM_RPC_URL },
+] as const;
+
+export const CHAIN_NAMES: Record<number, string> = {
+  1: "Ethereum",
+  56: "BNB Chain",
+  101: "Solana",
+  196: "X Layer",
+  8453: "Base",
+  42161: "Arbitrum",
+};
 
 export const ARBISCAN_TX_URL = (hash: string) => `https://arbiscan.io/tx/${hash}`;
 

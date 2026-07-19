@@ -15,7 +15,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ARBITRUM_CHAIN_ID, PARTICLE_CONFIG } from "@/lib/constants";
+import { ARBITRUM_CHAIN_ID, PARTICLE_CONFIG, SOLANA_CHAIN_ID } from "@/lib/constants";
 import { useMagic, type Magic } from "./MagicProvider";
 
 type AccountInfo = {
@@ -142,45 +142,72 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
   );
 
   /**
-   * Delegate the EOA on Arbitrum.
+   * Chains the payer actually holds value on. These are the chains that need
+   * delegation — Particle confirmed that delegation is required on the SOURCE chain,
+   * after which funds can be spent on any supported chain. Delegating only on the
+   * destination is not sufficient.
+   */
+  const fundedChainIds = useCallback((): number[] => {
+    const chains = new Set<number>();
+    for (const asset of primaryAssets?.assets ?? []) {
+      for (const holding of asset.chainAggregation ?? []) {
+        if (holding.amountInUSD > 0) chains.add(holding.token.chainId);
+      }
+    }
+    // Solana has no EIP-7702; it is never a delegation target.
+    chains.delete(SOLANA_CHAIN_ID);
+    return [...chains];
+  }, [primaryAssets]);
+
+  /**
+   * Delegate the EOA on every funded EVM chain that isn't delegated yet.
    *
    * Magic cannot sign chain-agnostic (chainId: 0) authorizations, which is what the
-   * UA SDK emits by default — so we delegate explicitly on Arbitrum first.
+   * UA SDK emits by default, so each chain is delegated explicitly.
    *
-   * The nonce is `auth.nonce + 1` because this delegation is itself a transaction
-   * sent from the EOA, consuming a nonce before the authorization takes effect.
+   * The nonce is `auth.nonce + 1` because the delegation is itself a transaction sent
+   * from the EOA, consuming a nonce before the authorization takes effect.
+   *
+   * Each delegation is a real transaction: the EOA pays gas on that chain.
    */
   const ensureDelegated = useCallback(async () => {
     if (!universalAccount || !magic || !address) {
       throw new Error("Universal Account is not ready");
     }
 
-    const deployments = await universalAccount.getEIP7702Deployments();
-    const arbitrum = (deployments as Array<{ chainId: number; isDelegated?: boolean }>).find(
-      (d) => d.chainId === ARBITRUM_CHAIN_ID,
+    const deployments = (await universalAccount.getEIP7702Deployments()) as Array<{
+      chainId: number;
+      isDelegated?: boolean;
+    }>;
+    const delegatedOn = new Set(
+      deployments.filter((d) => d.isDelegated).map((d) => d.chainId),
     );
-    if (arbitrum?.isDelegated) {
-      setIsDelegated(true);
-      return;
+
+    // Only funded chains. The destination deliberately isn't forced in: Particle's
+    // own demo settles to Solana, which cannot be delegated at all, so requiring
+    // delegation on the destination would be wrong — and would demand gas on a chain
+    // the payer may hold nothing on.
+    const targets = fundedChainIds().filter((chainId) => !delegatedOn.has(chainId));
+
+    for (const chainId of targets) {
+      await magic.evm.switchChain(chainId);
+      const [auth] = await universalAccount.getEIP7702Auth([chainId]);
+      const authorization = await signAuthorization(
+        magic,
+        auth.address,
+        chainId,
+        auth.nonce + 1,
+      );
+
+      await magic.wallet.send7702Transaction({
+        to: address, // self-call; the authorizationList is what does the work
+        data: "0x",
+        authorizationList: [authorization],
+      });
     }
 
-    await magic.evm.switchChain(ARBITRUM_CHAIN_ID);
-    const [auth] = await universalAccount.getEIP7702Auth([ARBITRUM_CHAIN_ID]);
-    const authorization = await signAuthorization(
-      magic,
-      auth.address,
-      ARBITRUM_CHAIN_ID,
-      auth.nonce + 1,
-    );
-
-    await magic.wallet.send7702Transaction({
-      to: address, // self-call; the authorizationList is what does the work
-      data: "0x",
-      authorizationList: [authorization],
-    });
-
     await refreshDelegation();
-  }, [universalAccount, magic, address, signAuthorization, refreshDelegation]);
+  }, [universalAccount, magic, address, signAuthorization, refreshDelegation, fundedChainIds]);
 
   /**
    * Sign a prepared UA transaction and submit it.
@@ -196,27 +223,32 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       }
 
       const authorizations: Array<{ userOpHash: string; signature: string }> = [];
-      const signatureByNonce = new Map<number, string>();
+      const signatureByAuth = new Map<string, string>();
 
       for (const userOp of transaction.userOps ?? []) {
         if (!userOp.eip7702Auth || userOp.eip7702Delegated) continue;
 
-        const { nonce, address: contractAddress, chainId } = userOp.eip7702Auth;
-        let serialized = signatureByNonce.get(nonce);
+        const { nonce, address: contractAddress } = userOp.eip7702Auth;
+
+        // The SDK emits chain-agnostic authorizations as chainId 0, which Magic
+        // cannot sign. 0 is falsy but NOT nullish, so `??` would pass it straight
+        // through to Magic and fail. `||` is load-bearing here, not a style choice.
+        const chainId = userOp.eip7702Auth.chainId || userOp.chainId || ARBITRUM_CHAIN_ID;
+
+        // Nonces are per-chain, so dedupe on (chain, nonce). Keying by nonce alone
+        // would reuse one chain's signature on another — and a fresh account
+        // typically sits at nonce 0 on every chain it hasn't touched.
+        const key = `${chainId}:${nonce}`;
+        let serialized = signatureByAuth.get(key);
 
         if (!serialized) {
-          const authorization = await signAuthorization(
-            magic,
-            contractAddress,
-            chainId ?? userOp.chainId ?? ARBITRUM_CHAIN_ID,
-            nonce,
-          );
+          const authorization = await signAuthorization(magic, contractAddress, chainId, nonce);
           serialized = Signature.from({
             r: authorization.r,
             s: authorization.s,
             v: authorization.v,
           }).serialized;
-          signatureByNonce.set(nonce, serialized);
+          signatureByAuth.set(key, serialized);
         }
 
         authorizations.push({ userOpHash: userOp.userOpHash, signature: serialized });
