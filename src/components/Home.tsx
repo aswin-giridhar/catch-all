@@ -11,8 +11,22 @@ export function Home() {
   const { primaryAssets, isLoading, refreshAssets } = useUniversalAccount();
   const [qr, setQr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [name, setName] = useState("");
 
-  const link = address ? `${window.location.origin}/r/${address}` : "";
+  // Remembered locally so the link keeps showing a person's name across visits.
+  // There is no server to store it on, and it isn't worth one.
+  useEffect(() => {
+    setName(localStorage.getItem("catchall:name") ?? "");
+  }, []);
+
+  function updateName(value: string) {
+    setName(value);
+    localStorage.setItem("catchall:name", value);
+  }
+
+  const link = address
+    ? `${window.location.origin}/r/${address}${name.trim() ? `?n=${encodeURIComponent(name.trim())}` : ""}`
+    : "";
 
   useEffect(() => {
     if (!link) return;
@@ -71,6 +85,18 @@ export function Home() {
           Send this to anyone. Whatever they hold, wherever they hold it, it reaches you
           as USDC on Arbitrum.
         </p>
+
+        <label className="mt-6 block">
+          <span className="font-board text-[0.6rem] uppercase tracking-[0.24em] text-brass">
+            Your name
+          </span>
+          <input
+            value={name}
+            onChange={(e) => updateName(e.target.value)}
+            placeholder="So people know who they're paying"
+            className="mt-2 w-full rounded-md border border-ink/20 bg-paper px-4 py-2.5 outline-none placeholder:text-ink/30 focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-amber"
+          />
+        </label>
 
         <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
           {qr && (

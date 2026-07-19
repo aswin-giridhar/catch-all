@@ -55,8 +55,10 @@ export function Landing() {
           />
         </div>
 
-        <div aria-hidden className="hidden font-display text-3xl text-brass sm:block">
-          →
+        {/* Points across on wide screens, down once the boards stack. */}
+        <div aria-hidden className="font-display text-3xl leading-none text-brass">
+          <span className="hidden sm:inline">→</span>
+          <span className="sm:hidden">↓</span>
         </div>
 
         <div>
