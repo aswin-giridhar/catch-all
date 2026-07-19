@@ -96,6 +96,33 @@ export function Landing() {
         </p>
         {error && <p className="mt-3 text-sm text-rust">{error}</p>}
       </form>
+
+      <dl className="mt-16 grid max-w-3xl gap-8 border-t border-ink/10 pt-8 sm:grid-cols-3">
+        {[
+          {
+            term: "Nothing is held",
+            detail:
+              "Money goes straight from them to you. No escrow, no middleman wallet, nothing to trust in between.",
+          },
+          {
+            term: "No wrong network",
+            detail:
+              "There is no network to choose, so there is no network to get wrong. Anything in, USDC on Arbitrum out.",
+          },
+          {
+            term: "No wallet needed",
+            detail:
+              "Whoever pays you signs in with an email. Their account is created in the moment they need it.",
+          },
+        ].map(({ term, detail }) => (
+          <div key={term}>
+            <dt className="font-board text-[0.6rem] uppercase tracking-[0.24em] text-brass">
+              {term}
+            </dt>
+            <dd className="mt-2 text-sm leading-relaxed text-ink-soft">{detail}</dd>
+          </div>
+        ))}
+      </dl>
     </main>
   );
 }

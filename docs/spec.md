@@ -11,13 +11,16 @@ always receives one predictable asset on one predictable chain.
 
 Chain abstraction is usually sold as *convenience*. Here it is sold as *safety*.
 
-## Hard requirements (hackathon)
+## Technical constraints
 
-- Universal Accounts SDK in EIP-7702 mode — **proven working** (EOA == UA address)
-- At least one cross-chain operation moving value via UA — **the gate**
-- Arbitrum as settlement chain — earns the Arbitrum bounty
-- Magic embedded wallet for login — earns the Magic bounty
-- Deployed demo — live at https://uxmaxx-seven.vercel.app
+- Universal Accounts SDK in EIP-7702 mode, so the user's existing EOA becomes the
+  account rather than a new smart account being deployed alongside it
+- Value must genuinely move across chains, not merely settle on one
+- Arbitrum as the settlement chain: predictable, cheap, and fast enough that the
+  recipient sees the money arrive within the span of a demo
+- Magic embedded wallet, because EIP-7702 authorizations require a wallet that
+  exposes `signAuthorization` — ordinary JSON-RPC wallets cannot participate
+- Deployed and publicly reachable: https://uxmaxx-seven.vercel.app
 
 ## Two link types, one payment engine
 

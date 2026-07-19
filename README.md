@@ -20,6 +20,13 @@ Catch-all sells it as **safety**. The recipient's link accepts anything, and the
 recipient always receives one predictable asset on one predictable chain. There is no
 network selector to get wrong, because there is no network selector.
 
+**Nothing is held in between.** Payments move directly from payer to recipient in a
+single Universal Accounts operation — no escrow contract, no relayer wallet, no
+custody. There is no intermediate account that can be drained, frozen, or lost, and no
+"claim" step where funds sit somewhere waiting. This is the reason several adjacent
+ideas were rejected during design: time locks, undo windows and marketplace escrow all
+require holding someone else's money, and none of them survive that constraint.
+
 ## What it does
 
 | | |

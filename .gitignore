@@ -42,3 +42,6 @@ next-env.d.ts
 
 # ...but the example file must be committed — it documents required keys.
 !.env.local.example
+
+# Strategy and submission notes live outside the repo (private/), not in front of judges.
+docs/submission.md
