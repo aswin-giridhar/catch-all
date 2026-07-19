@@ -1,26 +1,85 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/*
+  Bureau de change: you hand over any currency, you receive one currency back.
+  The interface is paper (receipts, counters) with one dark element — the
+  departure board — carrying all the drama.
+*/
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: #f2efe6;
+  --color-paper-deep: #e6e2d5;
+  --color-ink: #0d2321;
+  --color-ink-soft: #1b3936;
+  --color-amber: #f0a73c;
+  --color-brass: #9c7a45;
+  --color-mint: #7fb093;
+  --color-rust: #b6543a;
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-board: var(--font-board);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Paper grain — keeps large flat areas from reading as flat digital fill. */
+.paper-grain {
+  background-image: radial-gradient(circle at 1px 1px, rgb(13 35 33 / 0.045) 1px, transparent 0);
+  background-size: 4px 4px;
+}
+
+/* The torn edge of a receipt. */
+.receipt-edge {
+  --notch: 9px;
+  mask-image: radial-gradient(
+    circle at var(--notch) 0,
+    transparent var(--notch),
+    black calc(var(--notch) + 0.5px)
+  );
+  mask-size: calc(var(--notch) * 2) 100%;
+  mask-repeat: repeat-x;
+}
+
+@keyframes flap-in {
+  0% {
+    transform: rotateX(-90deg);
+    opacity: 0.2;
+  }
+  60% {
+    transform: rotateX(8deg);
+  }
+  100% {
+    transform: rotateX(0deg);
+    opacity: 1;
+  }
+}
+
+.flap-cell {
+  animation: flap-in 180ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  transform-origin: center top;
+}
+
+/* Hairline seam across the middle of each flap, as on a real Solari board. */
+.flap-seam::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 1px;
+  background: rgb(0 0 0 / 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flap-cell {
+    animation: none;
+  }
 }
