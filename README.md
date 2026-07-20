@@ -47,23 +47,57 @@ You can see this directly at [`/debug`](https://uxmaxx-seven.vercel.app/debug): 
 Universal Account address and the EOA address are **identical**. In Smart Account mode
 they would differ. That equality is the proof 7702 is active.
 
-**The payment.** `createTransferTransaction` targets USDC on Arbitrum. The payer's
-funds are sourced automatically from whatever Primary Assets they hold on any supported
-chain — the SDK routes and covers gas from those assets, so the payer needs no ETH on
-Arbitrum and no USDC anywhere in particular.
+**The payment.** Payments settle as USDC on Arbitrum. If the payer already holds USDC
+there, it's a single same-chain transfer. If their money is on another chain, the app
+first sources it across with a convert, then delivers — the payer sees one flow and
+never picks a network. Gas is covered from Primary Assets, so no ETH on Arbitrum is
+required.
 
 **The delegation.** EIP-7702 authorizations are signed via
-`magic.wallet.sign7702Authorization()`. Magic cannot sign chain-agnostic (`chainId: 0`)
-authorizations, which is what the UA SDK emits by default, so the account is delegated
-explicitly on Arbitrum first. Authorization signatures are deduped by nonce, so a
-transaction spanning several chains still asks the user to sign once.
+`magic.wallet.sign7702Authorization()`. Magic cannot sign chain-agnostic
+(`chainId: 0`) authorizations, which is what the UA SDK emits by default, so each
+chain is delegated explicitly — and delegation is required on every chain the payer
+spends *from*, not on the destination. Authorization signatures are deduped by
+`(chainId, nonce)`, since nonces are per-chain.
+
+## Verified on-chain
+
+**A cross-chain payment, settled in one Universal Accounts operation.** 3 USDC was
+delivered on Base while only ~$0.72 of it existed there — the shortfall was sourced
+from Arbitrum automatically:
+
+| Leg | Chain | Transaction |
+|---|---|---|
+| Source | Arbitrum | [`0x037055d1…`](https://arbiscan.io/tx/0x037055d153a439effa0b3bd0928c489aeb3d7004929cc8ff171bd6c12f561777) |
+| Delivery | Base | [`0x07311f61…`](https://basescan.org/tx/0x07311f616b4c677d06cb97a6638435cfcd713d44c1b9bb83593f511f0d206dd1) |
+
+Balances moved `Arbitrum USDC 4.6077 → 2.3256` and `Base USDC 0.9999 → 4.0000`.
+
+**A payment to another person**, settled on Arbitrum:
+[`0x058da2e5…`](https://arbiscan.io/tx/0x058da2e5be92ce6d465b7e97f71b4e5f1e78855e4dffc29fb853d9a923ff1127)
+— 1 USDC from a Magic embedded wallet created by email login.
+
+### The distinction that matters
+
+`createTransferTransaction` is **same-chain**: it moves a token already held on the
+destination chain, and returns `Insufficient primary token balance` when the money is
+anywhere else — regardless of how much the account holds in total.
+`createConvertTransaction` is the **cross-chain** primitive; its type has no
+`receiver` because it sources an asset onto a chain rather than paying anyone.
+
+A cross-chain payment is therefore convert (source across) followed by transfer
+(deliver locally), which is what this app does when the payer's funds live elsewhere.
+
+Note also that Universal Accounts prefers local liquidity: a small convert to a chain
+that can already fund it executes same-chain. Only a request exceeding local holdings
+actually crosses.
 
 ## Track requirements
 
 - **Universal Accounts SDK in EIP-7702 mode** — `useEIP7702: true`; verified by EOA/UA
   address equality, both in the browser and headlessly via `scripts/measure-fees.mjs`
-- **A cross-chain operation moving value via UA** — the payer's assets are sourced from
-  any supported chain and settle as USDC on Arbitrum
+- **A cross-chain operation moving value via UA** — verified above: one operation, two
+  chains, both legs successful on-chain
 - **Arbitrum** — the settlement chain for every payment; the account is delegated there
 - **Magic** — embedded wallet, email OTP, and the EIP-7702 authorization signer
 - **Functional demo** — deployed, plus runnable locally
@@ -79,8 +113,12 @@ Stated plainly rather than hidden:
   deployment complexity.
 - **Mainnet only.** Universal Accounts supports no testnets — verified by inspecting
   the SDK's chain enum, which contains only mainnet IDs. Every test costs real money.
-- **No transaction history.** Balances are read live from the SDK; past payments aren't
-  stored anywhere, because nothing is stored anywhere.
+- **No transaction history in the UI.** Balances are read live from the SDK; past
+  payments aren't stored anywhere, because nothing is stored anywhere.
+- **BNB Chain funds are unspendable.** Magic cannot sign EIP-7702 authorizations
+  there, so value held on BNB Chain can't be routed through this flow.
+- **Delegation is per-chain and costs gas.** Spending from a chain requires delegating
+  on it first, which needs a little native token there.
 
 ## Running locally
 
