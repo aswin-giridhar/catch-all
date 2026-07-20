@@ -15,7 +15,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ARBITRUM_CHAIN_ID, PARTICLE_CONFIG, SOLANA_CHAIN_ID } from "@/lib/constants";
+import {
+  ARBITRUM_CHAIN_ID,
+  MAGIC_7702_CHAINS,
+  PARTICLE_CONFIG,
+  SOLANA_CHAIN_ID,
+} from "@/lib/constants";
 import { useMagic, type Magic } from "./MagicProvider";
 
 type AccountInfo = {
@@ -154,9 +159,11 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
         if (holding.amountInUSD > 0) chains.add(holding.token.chainId);
       }
     }
-    // Solana has no EIP-7702; it is never a delegation target.
+    // Solana has no EIP-7702, and Magic cannot sign authorizations on every EVM
+    // chain UA supports — BNB Chain fails with "Unable to get network info".
+    // Value on an unsupported chain simply cannot be spent through this flow.
     chains.delete(SOLANA_CHAIN_ID);
-    return [...chains];
+    return [...chains].filter((chainId) => MAGIC_7702_CHAINS.includes(chainId));
   }, [primaryAssets]);
 
   /**

@@ -26,6 +26,16 @@ export const UA_EVM_CHAINS = [
   { chainId: ARBITRUM_CHAIN_ID, rpcUrl: ARBITRUM_RPC_URL },
 ] as const;
 
+/**
+ * Chains where Magic can actually produce an EIP-7702 authorization.
+ *
+ * Magic's docs cite Ethereum, Sepolia, Arbitrum, Base and Optimism; BNB Chain and
+ * X Layer are absent, and attempting to switch to BNB Chain fails with
+ * "Unable to get network info". A funded chain that isn't on this list cannot be
+ * used as a payment source, however much value sits on it.
+ */
+export const MAGIC_7702_CHAINS = [1, 8453, ARBITRUM_CHAIN_ID];
+
 export const CHAIN_NAMES: Record<number, string> = {
   1: "Ethereum",
   56: "BNB Chain",
