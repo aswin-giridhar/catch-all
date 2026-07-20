@@ -49,6 +49,8 @@ type UAContextValue = {
   refreshAssets: () => Promise<void>;
   ensureDelegated: () => Promise<void>;
   signAndSend: (transaction: UATransaction) => Promise<{ transactionId: string }>;
+  /** Resolve Particle's internal transactionId into an explorer-resolvable hash. */
+  resolveTxHash: (transactionId: string) => Promise<string | null>;
 };
 
 const UAContext = createContext<UAContextValue>({
@@ -60,6 +62,7 @@ const UAContext = createContext<UAContextValue>({
   refreshAssets: async () => {},
   ensureDelegated: async () => {},
   signAndSend: async () => ({ transactionId: "" }),
+  resolveTxHash: async () => null,
 });
 
 export const useUniversalAccount = () => useContext(UAContext);
@@ -276,6 +279,48 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
     [universalAccount, magic, signAuthorization],
   );
 
+  /**
+   * Turn a Universal Accounts transactionId into a real on-chain transaction hash.
+   *
+   * `sendTransaction` returns Particle's internal id (short, e.g. 0x0657013162e1e3),
+   * which no block explorer can resolve. The actual hash appears on the user
+   * operations inside the transaction detail, and only once the bundle has landed —
+   * so this polls briefly rather than reading once.
+   */
+  const resolveTxHash = useCallback(
+    async (transactionId: string): Promise<string | null> => {
+      if (!universalAccount) return null;
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          const detail = (await universalAccount.getTransaction(transactionId)) as Record<
+            string,
+            unknown
+          >;
+          const groups = [
+            "settlementUserOperations",
+            "lendingUserOperations",
+            "depositUserOperations",
+            "refundUserOperations",
+          ];
+          for (const group of groups) {
+            const ops = detail?.[group];
+            if (!Array.isArray(ops)) continue;
+            const withHash = ops.find(
+              (op: { txHash?: string }) => typeof op?.txHash === "string" && op.txHash.length === 66,
+            ) as { txHash: string } | undefined;
+            if (withHash) return withHash.txHash;
+          }
+        } catch {
+          // Detail isn't available immediately after submission; keep polling.
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      return null;
+    },
+    [universalAccount],
+  );
+
   const value = useMemo(
     () => ({
       universalAccount,
@@ -286,6 +331,7 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       refreshAssets,
       ensureDelegated,
       signAndSend,
+      resolveTxHash,
     }),
     [
       universalAccount,
@@ -296,6 +342,7 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       refreshAssets,
       ensureDelegated,
       signAndSend,
+      resolveTxHash,
     ],
   );
 

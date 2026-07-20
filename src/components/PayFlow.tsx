@@ -32,7 +32,8 @@ export function PayFlow({
   unlocks?: string;
 }) {
   const { address, loginWithEmail, isReady, isAuthenticating } = useMagic();
-  const { universalAccount, primaryAssets, ensureDelegated, signAndSend } = useUniversalAccount();
+  const { universalAccount, primaryAssets, ensureDelegated, signAndSend, resolveTxHash } =
+    useUniversalAccount();
 
   const [email, setEmail] = useState("");
   const [amount, setAmount] = useState(price ?? "");
@@ -85,8 +86,10 @@ export function PayFlow({
     setStage("sending");
     try {
       const result = await signAndSend(tx as never);
-      setTxHash(result.transactionId);
+      // Show the receipt immediately — the money has moved. The explorer link fills
+      // in a moment later, once the bundle lands and a real hash exists.
       setStage("done");
+      resolveTxHash(result.transactionId).then(setTxHash);
     } catch (e) {
       setError(message(e));
       // Discard the transaction rather than offering "try again" on the same one.
@@ -268,7 +271,7 @@ function Receipt({
         </div>
       </div>
 
-      {txHash && (
+      {txHash ? (
         <a
           href={ARBISCAN_TX_URL(txHash)}
           target="_blank"
@@ -277,6 +280,8 @@ function Receipt({
         >
           View on Arbiscan
         </a>
+      ) : (
+        <p className="mt-6 text-sm text-ink-soft">Confirming on Arbitrum…</p>
       )}
     </div>
   );
