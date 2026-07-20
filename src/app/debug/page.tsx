@@ -13,11 +13,20 @@ import { ARBITRUM_CHAIN_ID } from "@/lib/constants";
  */
 export default function Home() {
   const { address, isReady, isAuthenticating, loginWithEmail, logout } = useMagic();
-  const { accountInfo, primaryAssets, isDelegated, isLoading, ensureDelegated, refreshAssets } =
-    useUniversalAccount();
+  const {
+    accountInfo,
+    primaryAssets,
+    isDelegated,
+    isLoading,
+    ensureDelegated,
+    refreshAssets,
+    convertOntoChain,
+    resolveTxHash,
+  } = useUniversalAccount();
 
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [crossChainTx, setCrossChainTx] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   /** Surfacing the real error text matters — SDK failures here are rarely self-evident. */
@@ -110,6 +119,22 @@ export default function Home() {
               Delegate on Arbitrum
             </button>
             <button
+              onClick={() =>
+                run(async () => {
+                  // A genuine cross-chain operation: value is sourced from whatever
+                  // this account holds, on whichever chain, and lands on Base.
+                  const result = await convertOntoChain(8453, "usdc", "1");
+                  const hash = await resolveTxHash(result.transactionId);
+                  setCrossChainTx(hash);
+                  await refreshAssets();
+                })
+              }
+              disabled={busy}
+              className="rounded border border-black px-3 py-2 disabled:opacity-40"
+            >
+              Move $1 to Base (cross-chain)
+            </button>
+            <button
               onClick={() => run(refreshAssets)}
               disabled={busy}
               className="rounded border border-black px-3 py-2 disabled:opacity-40"
@@ -121,6 +146,20 @@ export default function Home() {
             </button>
           </div>
         </div>
+      )}
+
+      {crossChainTx && (
+        <p className="mt-4 rounded bg-green-50 p-3 text-green-800">
+          Cross-chain transfer complete:{" "}
+          <a
+            className="underline"
+            href={`https://arbiscan.io/tx/${crossChainTx}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {crossChainTx.slice(0, 18)}…
+          </a>
+        </p>
       )}
 
       {error && (

@@ -6,7 +6,7 @@ import { useMagic } from "@/components/providers/MagicProvider";
 import { useUniversalAccount } from "@/components/providers/UniversalAccountProvider";
 import { ARBISCAN_TX_URL, ARBITRUM_CHAIN_ID, USDC_ARBITRUM } from "@/lib/constants";
 
-type Stage = "amount" | "review" | "sending" | "done";
+type Stage = "amount" | "sourcing" | "review" | "sending" | "done";
 
 type BuiltTransaction = {
   rootHash: string;
@@ -32,8 +32,16 @@ export function PayFlow({
   unlocks?: string;
 }) {
   const { address, loginWithEmail, isReady, isAuthenticating } = useMagic();
-  const { universalAccount, primaryAssets, ensureDelegated, signAndSend, resolveTxHash } =
-    useUniversalAccount();
+  const {
+    universalAccount,
+    primaryAssets,
+    ensureDelegated,
+    signAndSend,
+    resolveTxHash,
+    heldOnChain,
+    convertOntoChain,
+    refreshAssets,
+  } = useUniversalAccount();
 
   const [email, setEmail] = useState("");
   const [amount, setAmount] = useState(price ?? "");
@@ -63,8 +71,27 @@ export function PayFlow({
     setError(null);
     setStage("review");
     try {
-      // Delegation must exist on Arbitrum before UA can route through the account.
+      // Delegation must exist on the payer's funded chains before UA can route.
       await ensureDelegated();
+
+      // `createTransferTransaction` is same-chain only: it moves a token already held
+      // on the destination chain. If the payer's money lives elsewhere, source it
+      // across first with a convert — that is the cross-chain operation.
+      const wanted = Number(amount);
+      if (heldOnChain("usdc", ARBITRUM_CHAIN_ID) < wanted) {
+        setStage("sourcing");
+        await convertOntoChain(ARBITRUM_CHAIN_ID, "usdc", amount);
+
+        // Bridging isn't instant. Wait for the balance to actually land rather than
+        // building a transfer against a balance that hasn't arrived.
+        for (let attempt = 0; attempt < 30; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await refreshAssets();
+          if (heldOnChain("usdc", ARBITRUM_CHAIN_ID) >= wanted) break;
+        }
+        setStage("review");
+      }
+
       const built = (await universalAccount.createTransferTransaction({
         token: { chainId: ARBITRUM_CHAIN_ID, address: USDC_ARBITRUM },
         amount,
@@ -207,10 +234,12 @@ export function PayFlow({
 
               <button
                 onClick={stage === "review" && tx ? handlePay : handleReview}
-                disabled={!amount || Number(amount) <= 0 || stage === "sending"}
+                disabled={!amount || Number(amount) <= 0 || stage === "sending" || stage === "sourcing"}
                 className="mt-6 w-full rounded-md bg-ink px-6 py-3.5 font-display font-bold text-paper hover:bg-ink-soft focus-visible:ring-2 focus-visible:ring-amber disabled:opacity-40"
               >
-                {stage === "sending"
+                {stage === "sourcing"
+                  ? "Bringing your money across…"
+                  : stage === "sending"
                   ? "Sending…"
                   : stage === "review" && tx
                     ? `Send $${amount}`

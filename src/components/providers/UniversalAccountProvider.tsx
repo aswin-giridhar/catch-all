@@ -51,6 +51,10 @@ type UAContextValue = {
   signAndSend: (transaction: UATransaction) => Promise<{ transactionId: string }>;
   /** Resolve Particle's internal transactionId into an explorer-resolvable hash. */
   resolveTxHash: (transactionId: string) => Promise<string | null>;
+  /** Units of a primary token held on a specific chain. */
+  heldOnChain: (tokenType: string, chainId: number) => number;
+  /** Cross-chain: source an asset onto a chain from holdings anywhere. */
+  convertOntoChain: (chainId: number, tokenType: string, amount: string) => Promise<{ transactionId: string }>;
 };
 
 const UAContext = createContext<UAContextValue>({
@@ -63,6 +67,8 @@ const UAContext = createContext<UAContextValue>({
   ensureDelegated: async () => {},
   signAndSend: async () => ({ transactionId: "" }),
   resolveTxHash: async () => null,
+  heldOnChain: () => 0,
+  convertOntoChain: async () => ({ transactionId: "" }),
 });
 
 export const useUniversalAccount = () => useContext(UAContext);
@@ -280,6 +286,43 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
   );
 
   /**
+   * How much of a given primary token the account holds on a given chain.
+   * Used to decide whether a payment needs cross-chain sourcing first.
+   */
+  const heldOnChain = useCallback(
+    (tokenType: string, chainId: number): number => {
+      for (const asset of primaryAssets?.assets ?? []) {
+        if (asset.tokenType !== tokenType) continue;
+        for (const holding of asset.chainAggregation ?? []) {
+          if (holding.token.chainId === chainId) return holding.amount;
+        }
+      }
+      return 0;
+    },
+    [primaryAssets],
+  );
+
+  /**
+   * Source an asset onto a target chain from holdings anywhere.
+   *
+   * This is the cross-chain operation. `createTransferTransaction` only moves a token
+   * already held on the destination chain — it is same-chain by design, which is why
+   * it returns "Insufficient primary token balance" even with a healthy balance
+   * elsewhere. Convert is what actually crosses chains.
+   */
+  const convertOntoChain = useCallback(
+    async (chainId: number, tokenType: string, amount: string) => {
+      if (!universalAccount) throw new Error("Universal Account is not ready");
+      const transaction = await universalAccount.createConvertTransaction({
+        chainId,
+        expectToken: { type: tokenType as never, amount },
+      });
+      return signAndSend(transaction as never);
+    },
+    [universalAccount, signAndSend],
+  );
+
+  /**
    * Turn a Universal Accounts transactionId into a real on-chain transaction hash.
    *
    * `sendTransaction` returns Particle's internal id (short, e.g. 0x0657013162e1e3),
@@ -332,6 +375,8 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       ensureDelegated,
       signAndSend,
       resolveTxHash,
+      heldOnChain,
+      convertOntoChain,
     }),
     [
       universalAccount,
@@ -343,6 +388,8 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       ensureDelegated,
       signAndSend,
       resolveTxHash,
+      heldOnChain,
+      convertOntoChain,
     ],
   );
 
