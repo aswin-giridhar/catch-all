@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMagic } from "@/components/providers/MagicProvider";
 import { useUniversalAccount } from "@/components/providers/UniversalAccountProvider";
-import { ARBITRUM_CHAIN_ID } from "@/lib/constants";
+import { ARBITRUM_CHAIN_ID, CHAIN_NAMES, EXPLORERS } from "@/lib/constants";
 
 /**
  * Diagnostic rig for the chain-abstraction spine.
@@ -21,12 +21,12 @@ export default function Home() {
     ensureDelegated,
     refreshAssets,
     convertOntoChain,
-    resolveTxHash,
+    resolveTxLegs,
   } = useUniversalAccount();
 
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [crossChainTx, setCrossChainTx] = useState<string | null>(null);
+  const [legs, setLegs] = useState<Array<{ chainId: number; txHash: string }>>([]);
   const [busy, setBusy] = useState(false);
 
   /** Surfacing the real error text matters — SDK failures here are rarely self-evident. */
@@ -113,26 +113,27 @@ export default function Home() {
           <div className="flex flex-wrap gap-2 pt-4">
             <button
               onClick={() => run(ensureDelegated)}
-              disabled={busy || isDelegated}
+              disabled={busy}
               className="rounded border border-black px-3 py-2 disabled:opacity-40"
             >
-              Delegate on Arbitrum
+              Delegate on funded chains
             </button>
             <button
               onClick={() =>
                 run(async () => {
                   // A genuine cross-chain operation: value is sourced from whatever
                   // this account holds, on whichever chain, and lands on Base.
-                  const result = await convertOntoChain(8453, "usdc", "1");
-                  const hash = await resolveTxHash(result.transactionId);
-                  setCrossChainTx(hash);
+                  // 3 USDC deliberately exceeds what Base can supply locally,
+                  // forcing UA to source the shortfall from Arbitrum.
+                  const result = await convertOntoChain(8453, "usdc", "3");
+                  setLegs(await resolveTxLegs(result.transactionId));
                   await refreshAssets();
                 })
               }
               disabled={busy}
               className="rounded border border-black px-3 py-2 disabled:opacity-40"
             >
-              Move $1 to Base (cross-chain)
+              Move $3 to Base (cross-chain)
             </button>
             <button
               onClick={() => run(refreshAssets)}
@@ -148,18 +149,25 @@ export default function Home() {
         </div>
       )}
 
-      {crossChainTx && (
-        <p className="mt-4 rounded bg-green-50 p-3 text-green-800">
-          Cross-chain transfer complete:{" "}
-          <a
-            className="underline"
-            href={`https://arbiscan.io/tx/${crossChainTx}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {crossChainTx.slice(0, 18)}…
-          </a>
-        </p>
+      {legs.length > 0 && (
+        <div className="mt-4 rounded bg-green-50 p-3 text-green-800">
+          <p className="font-bold">
+            {legs.length > 1
+              ? `Cross-chain complete — ${legs.length} chains`
+              : "Complete (single chain)"}
+          </p>
+          {legs.map((leg) => (
+            <a
+              key={leg.txHash}
+              className="mt-1 block underline"
+              href={`${EXPLORERS[leg.chainId] ?? "https://arbiscan.io"}/tx/${leg.txHash}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {CHAIN_NAMES[leg.chainId] ?? leg.chainId}: {leg.txHash.slice(0, 20)}…
+            </a>
+          ))}
+        </div>
       )}
 
       {error && (

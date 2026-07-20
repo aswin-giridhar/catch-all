@@ -51,6 +51,8 @@ type UAContextValue = {
   signAndSend: (transaction: UATransaction) => Promise<{ transactionId: string }>;
   /** Resolve Particle's internal transactionId into an explorer-resolvable hash. */
   resolveTxHash: (transactionId: string) => Promise<string | null>;
+  /** Every on-chain leg, with its chain — more than one means value crossed chains. */
+  resolveTxLegs: (transactionId: string) => Promise<Array<{ chainId: number; txHash: string }>>;
   /** Units of a primary token held on a specific chain. */
   heldOnChain: (tokenType: string, chainId: number) => number;
   /** Cross-chain: source an asset onto a chain from holdings anywhere. */
@@ -67,6 +69,7 @@ const UAContext = createContext<UAContextValue>({
   ensureDelegated: async () => {},
   signAndSend: async () => ({ transactionId: "" }),
   resolveTxHash: async () => null,
+  resolveTxLegs: async () => [],
   heldOnChain: () => 0,
   convertOntoChain: async () => ({ transactionId: "" }),
 });
@@ -323,6 +326,50 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
   );
 
   /**
+   * Every on-chain leg of a Universal Accounts transaction, with the chain each
+   * landed on.
+   *
+   * A cross-chain operation produces more than one leg — that list, with an explorer
+   * link per chain, is the clearest evidence that value actually crossed rather than
+   * being sourced locally.
+   */
+  const resolveTxLegs = useCallback(
+    async (transactionId: string): Promise<Array<{ chainId: number; txHash: string }>> => {
+      if (!universalAccount) return [];
+
+      for (let attempt = 0; attempt < 12; attempt++) {
+        try {
+          const detail = (await universalAccount.getTransaction(transactionId)) as Record<
+            string,
+            unknown
+          >;
+          const legs: Array<{ chainId: number; txHash: string }> = [];
+          for (const group of [
+            "depositUserOperations",
+            "settlementUserOperations",
+            "lendingUserOperations",
+            "refundUserOperations",
+          ]) {
+            const ops = detail?.[group];
+            if (!Array.isArray(ops)) continue;
+            for (const op of ops as Array<{ chainId?: number; txHash?: string }>) {
+              if (op?.txHash?.length === 66 && op.chainId) {
+                legs.push({ chainId: op.chainId, txHash: op.txHash });
+              }
+            }
+          }
+          if (legs.length > 0) return legs;
+        } catch {
+          // Detail lags submission; keep polling.
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      return [];
+    },
+    [universalAccount],
+  );
+
+  /**
    * Turn a Universal Accounts transactionId into a real on-chain transaction hash.
    *
    * `sendTransaction` returns Particle's internal id (short, e.g. 0x0657013162e1e3),
@@ -375,6 +422,7 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       ensureDelegated,
       signAndSend,
       resolveTxHash,
+      resolveTxLegs,
       heldOnChain,
       convertOntoChain,
     }),
@@ -388,6 +436,7 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       ensureDelegated,
       signAndSend,
       resolveTxHash,
+      resolveTxLegs,
       heldOnChain,
       convertOntoChain,
     ],

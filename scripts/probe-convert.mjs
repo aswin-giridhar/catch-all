@@ -12,7 +12,7 @@ const show=(label,tx)=>{
 };
 
 // H1 — convert: "give me this asset on this chain", sourced from anywhere.
-for (const [chainId,type,amount] of [[8453,"usdc","1"],[1,"usdc","2"],[8453,"eth","0.0005"],[42161,"usdc","1"]]) {
+for (const [chainId,type,amount] of [[8453,"usdc","3"],[8453,"usdc","2.5"],[1,"usdc","2"],[8453,"usdc","1"]]) {
   const label=`convert -> ${amount} ${type} on ${N[chainId]}`;
   try { show(label, await ua.createConvertTransaction({ chainId, expectToken:{ type, amount } })); }
   catch(e){ console.log(`FAILED  ${label.padEnd(46)} ${e.message?.slice(0,42)}`); }

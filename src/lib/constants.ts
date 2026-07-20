@@ -80,3 +80,11 @@ export const PARTICLE_CONFIG = () => ({
     process.env.NEXT_PUBLIC_PARTICLE_APP_ID,
   ),
 });
+
+/** Block explorer per chain, so a cross-chain receipt links each leg correctly. */
+export const EXPLORERS: Record<number, string> = {
+  1: "https://etherscan.io",
+  56: "https://bscscan.com",
+  8453: "https://basescan.org",
+  42161: "https://arbiscan.io",
+};
