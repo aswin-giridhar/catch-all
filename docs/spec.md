@@ -64,6 +64,8 @@ different chains.
 ## Failure modes to handle explicitly
 
 - Insufficient balance → show the fee preview *before* signing, never after
-- Not yet delegated on Arbitrum → delegate inline, don't make it a separate user step
+- Not yet delegated → delegate on each chain the payer spends FROM, not the destination
+- Payer's funds on another chain → source across with a convert first, then deliver;
+  `createTransferTransaction` is same-chain only
 - Payer has no wallet → email login creates one mid-flow, no interruption
 - Transaction pending → show progress; UA routing is not instant
